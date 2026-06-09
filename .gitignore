@@ -1,0 +1,29 @@
+# Binaries
+/flycspm
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+*.out
+coverage.txt
+.pytest_cache/
+test_inventory_local.json
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go environment and vendor
+vendor/
+go.work
+go.work.sum
