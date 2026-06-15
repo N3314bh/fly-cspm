@@ -8,7 +8,7 @@ Two scan modes:
 
 ---
 
-## 🏗️ Architecture & Extensibility
+##  Architecture & Extensibility
 
 Data flow through the application:
 
@@ -59,7 +59,7 @@ graph TD
 
 ---
 
-## 🔒 Implemented Security Rules
+## Implemented Security Rules
 
 FlyCSPM evaluates the following policies:
 
@@ -74,7 +74,7 @@ FlyCSPM evaluates the following policies:
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 * Go 1.21 or higher
@@ -108,7 +108,7 @@ export FLY_API_TOKEN="your_fly_api_token"
 
 ---
 
-## 🧪 Running Tests
+## Running Tests
 
 Run with coverage:
 ```bash
@@ -123,7 +123,7 @@ go tool cover -html=coverage.out
 
 ---
 
-## 🛠️ How to Add a New Rule
+## How to Add a New Rule
 1. Create `pkg/rules/my_new_rule.go` implementing the `Rule` interface.
 2. Add an `init()` block calling `rules.Register(&MyNewRule{})`.
 3. Create `pkg/rules/my_new_rule_test.go` with unit test scenarios.
