@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/neelabhsarkar/flycspm/pkg/rules"
 )
@@ -21,7 +22,7 @@ func New() *Scanner {
 
 // Scan runs the policy engine against a given inventory of resources.
 func (s *Scanner) Scan(ctx context.Context, inventory *rules.Inventory) ([]rules.Finding, error) {
-	var allFindings []rules.Finding
+	allFindings := make([]rules.Finding, 0)
 
 	for _, rule := range s.rules {
 		findings, err := rule.Evaluate(ctx, inventory)
@@ -31,5 +32,34 @@ func (s *Scanner) Scan(ctx context.Context, inventory *rules.Inventory) ([]rules
 		allFindings = append(allFindings, findings...)
 	}
 
+	// Sort findings by severity weight (Critical -> High -> Medium -> Low),
+	// then deterministically by Rule ID, and finally by Resource ID.
+	sort.Slice(allFindings, func(i, j int) bool {
+		wI := getSeverityWeight(allFindings[i].Severity)
+		wJ := getSeverityWeight(allFindings[j].Severity)
+		if wI != wJ {
+			return wI < wJ
+		}
+		if allFindings[i].RuleID != allFindings[j].RuleID {
+			return allFindings[i].RuleID < allFindings[j].RuleID
+		}
+		return allFindings[i].ResourceID < allFindings[j].ResourceID
+	})
+
 	return allFindings, nil
+}
+
+func getSeverityWeight(sev rules.Severity) int {
+	switch sev {
+	case rules.SeverityCritical:
+		return 1
+	case rules.SeverityHigh:
+		return 2
+	case rules.SeverityMedium:
+		return 3
+	case rules.SeverityLow:
+		return 4
+	default:
+		return 99 // Put unrecognized severities at the bottom
+	}
 }
