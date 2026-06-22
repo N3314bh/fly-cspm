@@ -21,7 +21,7 @@ func Register(rule Rule) {
 func GetRules() []Rule {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
-	
+
 	rules := make([]Rule, 0, len(registry))
 	for _, rule := range registry {
 		rules = append(rules, rule)

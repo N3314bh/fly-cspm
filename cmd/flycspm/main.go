@@ -14,11 +14,23 @@ import (
 	"github.com/neelabhsarkar/flycspm/pkg/scanner"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	filePath := flag.String("file", "", "Path to the Fly.io inventory JSON file to scan (offline mode)")
 	filter := flag.String("filter", "", "Substring to filter App names by (case-insensitive)")
 	format := flag.String("format", "text", "Output format: text or json")
+	versionFlag := flag.Bool("version", false, "Print version information and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("flycspm %s (commit: %s, built at: %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	if *format != "text" && *format != "json" {
 		fmt.Fprintf(os.Stderr, "Error: invalid format %q. Allowed values: text, json\n", *format)
@@ -149,12 +161,12 @@ func printReport(findings []rules.Finding) {
 	)
 
 	if isTTY() {
-		colorReset   = "\033[0m"
-		colorRed     = "\033[31m"
-		colorYellow  = "\033[33m"
-		colorBlue    = "\033[34m"
-		colorGreen   = "\033[32m"
-		colorBold    = "\033[1m"
+		colorReset = "\033[0m"
+		colorRed = "\033[31m"
+		colorYellow = "\033[33m"
+		colorBlue = "\033[34m"
+		colorGreen = "\033[32m"
+		colorBold = "\033[1m"
 		colorRedBold = "\033[1;31m"
 	}
 

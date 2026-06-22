@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/neelabhsarkar/flycspm/pkg/rules"
@@ -144,52 +145,113 @@ func (c *Client) FetchInventory(ctx context.Context) (*rules.Inventory, error) {
 			return nil, fmt.Errorf("fly api request failed: %w", err)
 		}
 
-		for _, appNode := range response.Data.Apps.Nodes {
-			var ips []string
-			for _, ip := range appNode.IPAddresses.Nodes {
-				// Fly.io marks public IPs as "v4" or "v6". Private internal IPs (6PN) start with fdaa.
-				if ip.Type == "v4" || ip.Type == "v6" {
-					ips = append(ips, ip.Address)
-				}
-			}
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
-			// Parse config environment variables
-			envVars := make(map[string]string)
-			if appNode.Config != nil && len(appNode.Config.Definition) > 0 {
-				var appDef struct {
-					Env map[string]interface{} `json:"env"`
+		var (
+			wg   sync.WaitGroup
+			mu   sync.Mutex
+			gErr error
+		)
+
+		nodesCount := len(response.Data.Apps.Nodes)
+		apps := make([]rules.App, nodesCount)
+		volsList := make([][]rules.Volume, nodesCount)
+
+		for idx, appNode := range response.Data.Apps.Nodes {
+			mu.Lock()
+			if gErr != nil {
+				mu.Unlock()
+				break
+			}
+			mu.Unlock()
+
+			appNode := appNode // safe copy for closure in goroutine
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+
+				// Early-break check within the goroutine body to avoid starting work
+				mu.Lock()
+				if gErr != nil {
+					mu.Unlock()
+					return
 				}
-				if err := json.Unmarshal(appNode.Config.Definition, &appDef); err == nil {
-					for k, v := range appDef.Env {
-						if v != nil {
-							envVars[k] = fmt.Sprintf("%v", v)
+				mu.Unlock()
+
+				var ips []string
+				for _, ip := range appNode.IPAddresses.Nodes {
+					// Fly.io marks public IPs as "v4" or "v6". Private internal IPs (6PN) start with fdaa.
+					if ip.Type == "v4" || ip.Type == "v6" {
+						ips = append(ips, ip.Address)
+					}
+				}
+
+				// Parse config environment variables
+				envVars := make(map[string]string)
+				if appNode.Config != nil && len(appNode.Config.Definition) > 0 {
+					var appDef struct {
+						Env map[string]interface{} `json:"env"`
+					}
+					if err := json.Unmarshal(appNode.Config.Definition, &appDef); err == nil {
+						for k, v := range appDef.Env {
+							if v != nil {
+								envVars[k] = fmt.Sprintf("%v", v)
+							}
 						}
 					}
 				}
-			}
 
-			// Fetch machines via REST API
-			machines, machIsDb, err := c.fetchMachines(ctx, appNode.Name)
-			if err != nil {
-				return nil, err
-			}
+				// Fetch machines via REST API
+				machines, machIsDb, err := c.fetchMachines(ctx, appNode.Name)
+				if err != nil {
+					mu.Lock()
+					if gErr == nil {
+						gErr = err
+						cancel()
+					}
+					mu.Unlock()
+					return
+				}
 
-			inventory.Apps = append(inventory.Apps, rules.App{
-				ID:           appNode.ID,
-				Name:         appNode.Name,
-				Organization: appNode.Organization.Slug,
-				IsDatabase:   appNode.IsDatabase || machIsDb,
-				PublicIPs:    ips,
-				EnvVariables: envVars,
-				Machines:     machines,
-			})
+				// Parse volumes (appended to top-level inventory)
+				vols, err := c.fetchVolumes(ctx, appNode.ID, appNode.Name)
+				if err != nil {
+					mu.Lock()
+					if gErr == nil {
+						gErr = err
+						cancel()
+					}
+					mu.Unlock()
+					return
+				}
 
-			// Parse volumes (appended to top-level inventory)
-			vols, err := c.fetchVolumes(ctx, appNode.ID, appNode.Name)
-			if err != nil {
-				return nil, err
+				apps[i] = rules.App{
+					ID:           appNode.ID,
+					Name:         appNode.Name,
+					Organization: appNode.Organization.Slug,
+					IsDatabase:   appNode.IsDatabase || machIsDb,
+					PublicIPs:    ips,
+					EnvVariables: envVars,
+					Machines:     machines,
+				}
+				volsList[i] = vols
+			}(idx)
+		}
+
+		wg.Wait()
+
+		if gErr != nil {
+			return nil, gErr
+		}
+
+		// Append the fetched apps and volumes in order
+		for i := 0; i < nodesCount; i++ {
+			if apps[i].ID == "" {
+				continue
 			}
-			inventory.Volumes = append(inventory.Volumes, vols...)
+			inventory.Apps = append(inventory.Apps, apps[i])
+			inventory.Volumes = append(inventory.Volumes, volsList[i]...)
 		}
 
 		if !response.Data.Apps.PageInfo.HasNextPage {

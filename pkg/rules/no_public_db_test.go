@@ -56,7 +56,7 @@ func TestNoPublicDB_Evaluate(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "Vulnerable database app with active machine services (should be bypassed and left to reachability rule)",
+			name: "Vulnerable database app with active machine services (should be flagged)",
 			inventory: &Inventory{
 				Apps: []App{
 					{
@@ -76,7 +76,7 @@ func TestNoPublicDB_Evaluate(t *testing.T) {
 					},
 				},
 			},
-			wantCount: 0,
+			wantCount: 1,
 		},
 	}
 

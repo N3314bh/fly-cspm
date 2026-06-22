@@ -17,13 +17,14 @@ func TestEnvSecrets_Evaluate(t *testing.T) {
 				EnvVariables: map[string]string{
 					"DATABASE_URL":      "postgres://user:super-secret-password@localhost:5432/db",
 					"STRIPE_API_KEY":    "sk_live_abcdef123456",
-					"DEFAULT_REGION":    "ams",               // Safe key
-					"APP_DEBUG":         "false",             // Safe key/value
-					"SLACK_AUTH_TOKEN":  "change-me",         // Key matches secret, but value is placeholder
-					"AWS_SECRET_KEY":    "   ",               // Key matches secret, but value is whitespace
-					"AUTH_MODE":         "oauth2",            // Safe: key is not a secret suffix
-					"URL_PREFIX":        "/api/v1",           // Safe: key is not a secret suffix
-					"KEY_ROTATION_DAYS": "30",                // Safe: key is not a secret suffix
+					"DB_PASSWORD":       "root",      // Short/low entropy password - should be flagged unconditionally
+					"DEFAULT_REGION":    "ams",       // Safe key
+					"APP_DEBUG":         "false",     // Safe key/value
+					"SLACK_AUTH_TOKEN":  "change-me", // Key matches secret, but value is placeholder
+					"AWS_SECRET_KEY":    "   ",       // Key matches secret, but value is whitespace
+					"AUTH_MODE":         "oauth2",    // Safe: key is not a secret suffix
+					"URL_PREFIX":        "/api/v1",   // Safe: key is not a secret suffix
+					"KEY_ROTATION_DAYS": "30",        // Safe: key is not a secret suffix
 				},
 				Machines: []Machine{
 					{
@@ -43,14 +44,14 @@ func TestEnvSecrets_Evaluate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should flag DATABASE_URL and STRIPE_API_KEY (app level) plus API_SECRET_KEY (machine level).
-	expectedFindings := 3
+	// Should flag DATABASE_URL, STRIPE_API_KEY, and DB_PASSWORD (app level) plus API_SECRET_KEY (machine level).
+	expectedFindings := 4
 	if len(findings) != expectedFindings {
 		t.Errorf("expected %d findings, got %d", expectedFindings, len(findings))
 	}
 
 	for _, f := range findings {
-		if strings.Contains(f.Message, "super-secret-password") || strings.Contains(f.Message, "sk_live_") || strings.Contains(f.Message, "sk-live-") {
+		if strings.Contains(f.Message, "super-secret-password") || strings.Contains(f.Message, "sk_live_") || strings.Contains(f.Message, "sk-live-") || strings.Contains(f.Message, "root") {
 			t.Errorf("finding message leaked raw secret credentials: %s", f.Message)
 		}
 	}

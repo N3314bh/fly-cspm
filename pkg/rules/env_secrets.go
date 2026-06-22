@@ -20,6 +20,9 @@ var (
 	// But excludes: AUTH_MODE, URL_PREFIX, KEY_ROTATION_DAYS.
 	secretKeyRegex = regexp.MustCompile(`(?i)([_-](password|secret|token|key|credential|passphrase|auth|url|uri|private)$|^(password|secret|token|key|credential|passphrase|auth|url|uri|private)$)`)
 
+	// Keys that definitely represent credentials or secrets if set (e.g. password, secret, token, passphrase, credential)
+	unconditionalSecretKeyRegex = regexp.MustCompile(`(?i)([_-](password|secret|token|passphrase|credential)$|^(password|secret|token|passphrase|credential)$)`)
+
 	// Matches typical placeholder values to reduce false positives (e.g. "change-me", "", "placeholder")
 	placeholderRegex = regexp.MustCompile(`(?i)^(change[-_]?me|placeholder|test|dummy|false|true|nil|null|none|default)?$`)
 
@@ -79,16 +82,19 @@ func (r *EnvSecrets) Evaluate(ctx context.Context, inventory *Inventory) ([]Find
 		for key, val := range app.EnvVariables {
 			valClean := strings.TrimSpace(val)
 			if secretKeyRegex.MatchString(key) {
-				if valClean != "" && !placeholderRegex.MatchString(valClean) && looksLikeSecret(valClean) {
-					maskedVal := maskValue(valClean)
-					findings = append(findings, Finding{
-						RuleID:       r.ID(),
-						RuleName:     r.Name(),
-						ResourceID:   app.ID,
-						ResourceType: "App",
-						Severity:     r.Severity(),
-						Message:      fmt.Sprintf("Application %q exposes a potential secret in environment variable %q (%s). Use 'fly secrets set' instead.", app.Name, key, maskedVal),
-					})
+				if valClean != "" && !placeholderRegex.MatchString(valClean) {
+					isSecret := unconditionalSecretKeyRegex.MatchString(key) || looksLikeSecret(valClean)
+					if isSecret {
+						maskedVal := maskValue(valClean)
+						findings = append(findings, Finding{
+							RuleID:       r.ID(),
+							RuleName:     r.Name(),
+							ResourceID:   app.ID,
+							ResourceType: "App",
+							Severity:     r.Severity(),
+							Message:      fmt.Sprintf("Application %q exposes a potential secret in environment variable %q (%s). Use 'fly secrets set' instead.", app.Name, key, maskedVal),
+						})
+					}
 				}
 			}
 		}
@@ -98,16 +104,19 @@ func (r *EnvSecrets) Evaluate(ctx context.Context, inventory *Inventory) ([]Find
 			for key, val := range mach.EnvVariables {
 				valClean := strings.TrimSpace(val)
 				if secretKeyRegex.MatchString(key) {
-					if valClean != "" && !placeholderRegex.MatchString(valClean) && looksLikeSecret(valClean) {
-						maskedVal := maskValue(valClean)
-						findings = append(findings, Finding{
-							RuleID:       r.ID(),
-							RuleName:     r.Name(),
-							ResourceID:   mach.ID,
-							ResourceType: "Machine",
-							Severity:     r.Severity(),
-							Message:      fmt.Sprintf("Machine %q (%s) in application %q exposes a potential secret in environment variable %q (%s). Use 'fly secrets set' instead.", mach.Name, mach.ID, app.Name, key, maskedVal),
-						})
+					if valClean != "" && !placeholderRegex.MatchString(valClean) {
+						isSecret := unconditionalSecretKeyRegex.MatchString(key) || looksLikeSecret(valClean)
+						if isSecret {
+							maskedVal := maskValue(valClean)
+							findings = append(findings, Finding{
+								RuleID:       r.ID(),
+								RuleName:     r.Name(),
+								ResourceID:   mach.ID,
+								ResourceType: "Machine",
+								Severity:     r.Severity(),
+								Message:      fmt.Sprintf("Machine %q (%s) in application %q exposes a potential secret in environment variable %q (%s). Use 'fly secrets set' instead.", mach.Name, mach.ID, app.Name, key, maskedVal),
+							})
+						}
 					}
 				}
 			}
